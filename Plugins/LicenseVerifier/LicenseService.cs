@@ -257,8 +257,8 @@ namespace ImageResizer.Plugins.LicenseVerifier {
 
         protected override RequestedAction PreFlushChanges(ImageState s)
         {
-            
-            if (s.destBitmap != null && ShouldDisplayDot(c, s))
+            // disabled to use as AGPL module without the dot, as discussed w/Jonathan
+            if (false && s.destBitmap != null && ShouldDisplayDot(c, s))
             {
                 int w = s.destBitmap.Width;
                 int h = s.destBitmap.Height;
