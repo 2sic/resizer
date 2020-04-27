@@ -8,6 +8,8 @@ namespace ImageResizer.Plugins.LicenseVerifier
 {
     partial class LicenseEnforcer<T>
     {
-        const bool Enforce = true;
+        // disabled to use as AGPL module without the dot, as discussed w/Jonathan
+        // See previous code https://github.com/2sic/resizer/commit/33735dbc7c77cb9d0746f52a8b382965c786fa44
+        const bool Enforce = false;// true;
     }
 }
