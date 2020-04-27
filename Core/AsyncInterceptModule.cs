@@ -22,6 +22,7 @@ using System.Web.Hosting;
 using System.Web.Security;
 using ImageResizer.ExtensionMethods;
 using System.Globalization;
+﻿using System.Threading;
 
 namespace ImageResizer
 {
@@ -75,6 +76,7 @@ namespace ImageResizer
 
             if (result == HttpModuleRequestAssistant.PostAuthorizeResult.AccessDenied403)
             {
+                ra.FireAccessDenied();
                 throw new ImageProcessingException(403, "Access denied", "Access denied");
             }
 
@@ -106,9 +108,10 @@ namespace ImageResizer
                 {
                     await HandleRequest(app.Context, ra, vf);
                     //Catch not found exceptions
+                    ra.FirePostAuthorizeSuccess();
                 }
                 catch (System.IO.FileNotFoundException notFound)
-                { //Some VPPs are optimisitic , or could be a race condition
+                { //Some VPPs are optimistic, or could be a race condition
                     if (notFound.Message.Contains(" assembly ")) throw; //If an assembly is missing, it should be a 500, not a 404
                     ra.FireMissing();
                     throw new ImageMissingException("The specified resource could not be located", "File not found", notFound);
@@ -118,7 +121,12 @@ namespace ImageResizer
                     ra.FireMissing();
                     throw new ImageMissingException("The specified resource could not be located", "File not found", notFound);
                 }
-          
+                catch (Exception ex)
+                {
+                    ra.FirePostAuthorizeRequestException(ex);
+                    throw;
+                }
+
 
             }
         }
@@ -196,17 +204,7 @@ namespace ImageResizer
                     }
                     else
                     {
-                        //Handle I/O portions of work asynchronously. 
-                        var j = new ImageJob();
-                        j.Instructions = new Instructions(settings);
-                        j.SourcePathData = vf != null ? vf.VirtualPath : ra.RewrittenVirtualPath;
-
-                        
-                        var outBuffer = new MemoryStream(32 * 1024);
-                        j.Dest = outBuffer;
-
                         MemoryStream inBuffer = null;
-
                         using (var sourceStream = vf != null ? await vf.OpenAsync() : File.Open(ra.RewrittenMappedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
                         {
                             inBuffer = new MemoryStream(sourceStream.CanSeek ? (int)sourceStream.Length : 128 * 1024);
@@ -214,13 +212,23 @@ namespace ImageResizer
                         }
                         inBuffer.Seek(0, SeekOrigin.Begin);
 
-                        j.Source = inBuffer;
-                        
+                        var outBuffer = new MemoryStream(32 * 1024);
 
-                        await Task.Run(delegate() { conf.GetImageBuilder().Build(j); });
+                        //Handle I/O portions of work asynchronously. 
+                        var j = new ImageJob
+                        {
+                            Instructions = new Instructions(settings),
+                            SourcePathData = vf != null ? vf.VirtualPath : ra.RewrittenVirtualPath,
+                            Dest = outBuffer,
+                            Source = inBuffer
+                        };
+
+                        await conf.GetImageBuilder().BuildAsync(j, int.MaxValue, CancellationToken.None);
+
                         outBuffer.Seek(0, SeekOrigin.Begin);
                         await outBuffer.CopyToAsync(stream);
                     }
+                    ra.FireJobSuccess();
                     //Catch not found exceptions
                 }
                 catch (System.IO.FileNotFoundException notFound)
@@ -237,6 +245,11 @@ namespace ImageResizer
                     ra.FireMissing();
                     throw new ImageMissingException("The specified resource could not be located", "File not found", notFound);
                 }
+                catch (Exception ex)
+                {
+                    ra.FireJobException(ex);
+                    throw;
+                }
             };
 
 
@@ -247,7 +260,7 @@ namespace ImageResizer
             context.Items[conf.ResponseArgsKey] = e; //store in context items
 
             //Fire events (for client-side caching plugins)
-            //conf.FirePreHandleImage(this, context, e);
+            conf.FirePreHandleImageAsync(this, context, e);
 
             //Pass the rest of the work off to the caching module. It will handle rewriting/redirecting and everything. 
             //We handle request headers based on what is found in context.Items
