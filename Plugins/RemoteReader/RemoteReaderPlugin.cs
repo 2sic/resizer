@@ -26,9 +26,7 @@ namespace ImageResizer.Plugins.RemoteReader {
     {
 
         public Configuration.Xml.Node RedactFrom(Node resizer) {
-            if (resizer != null && resizer.queryFirst("remoteReader") != null) resizer.setAttr("remoteReader.signingKey", "[redacted]");
-
-            return resizer;
+            return resizer?.RedactAttributes("remoteReader", new[] { "signingKey" });
         }
 
         private static string base64UrlKey = "urlb64";
@@ -47,10 +45,24 @@ namespace ImageResizer.Plugins.RemoteReader {
         /// </summary>
         public int AllowedRedirects { get; set; }
 
+        /// <summary>
+        /// Optionally skip validation using Uri.IsWellFormedUriString() to prevent errors with some non-standard URLs in use
+        /// </summary>
+        public bool SkipUriValidation { get; set; }
+
+        /// <summary>
+        /// Set the UserAgent header for HTTP requests.
+        /// </summary>
+        public string UserAgent { get; set; } = "ImageResizer";
+
+
+
         protected string remotePrefix = "~/remote";
         Config c;
+
         public RemoteReaderPlugin() {
             AllowedRedirects = 5;
+            SkipUriValidation = false;
             try {
                 remotePrefix = Util.PathUtils.ResolveAppRelativeAssumeAppRelative(remotePrefix);
                 //Remote prefix must never end in a slash - remote.jpg syntax...
@@ -68,7 +80,9 @@ namespace ImageResizer.Plugins.RemoteReader {
             c.Pipeline.PostAuthorizeRequestStart += Pipeline_PostAuthorizeRequestStart;
             c.Pipeline.RewriteDefaults += Pipeline_RewriteDefaults;
             c.Pipeline.PostRewrite += Pipeline_PostRewrite;
-            AllowedRedirects = c.get("remoteReader.allowedRedirects",AllowedRedirects);
+            AllowedRedirects = c.get("remoteReader.allowedRedirects", AllowedRedirects);
+            SkipUriValidation = c.get("remoteReader.skipUriValidation", SkipUriValidation);
+            UserAgent = c.get("remoteReader.userAgent", UserAgent);
 
             return this;
         }
@@ -176,20 +190,20 @@ namespace ImageResizer.Plugins.RemoteReader {
         public string SignData(string data) {
 
             string key = c.get("remoteReader.signingKey", String.Empty);
-            if (string.IsNullOrEmpty(key)) throw new ImageResizer.ImageProcessingException("You are required to set a passphrase for securing remote URLs. <resizer><remotereader signingKey=\"put a long and randam passphrase here\" /> </resizer>");
+            if (string.IsNullOrEmpty(key)) throw new ImageResizer.ImageProcessingException("You are required to set a passphrase for securing remote URLs. <resizer><remotereader signingKey=\"put a long and random passphrase here\" /> </resizer>");
             return SignDataWithKey(data, key);
         }
         public string SignDataWithKey(string data, string key) {
 
             HMACSHA256 hmac = new HMACSHA256(UTF8Encoding.UTF8.GetBytes(key));
             byte[] hash = hmac.ComputeHash(UTF8Encoding.UTF8.GetBytes(data));
-            //32-byte hash is a bit overkill. Truncation doesn't weaking the integrity of the algorithm.
+            //32-byte hash is a bit overkill. Truncation doesn't weaken the integrity of the algorithm.
             byte[] shorterHash = new byte[8];
             Array.Copy(hash, shorterHash, 8);
             return PathUtils.ToBase64U(shorterHash);
         }
         /// <summary>
-        /// Parses the specified path and querystring. Verifies the hmac signature for querystring specified paths, parses the
+        /// Parses the specified path and querystring. Verifies the HMAC signature for querystring specified paths, parses the
         /// human-friendly syntax for that syntax. Verifies the URL is properly formed. Returns an object containing the remote URL,
         /// querystring remainder, and a flag stating whether the request was signed or not. Incorrectly signed requests immediately throw an exception.
         /// </summary>
@@ -227,7 +241,7 @@ namespace ImageResizer.Plugins.RemoteReader {
                 args.RemoteUrl = "http://" + ReplaceInLeadingSegment(virtualPath.Substring(remotePrefix.Length).TrimStart('/', '\\'), "_", ".");
                 args.RemoteUrl = Uri.EscapeUriString(args.RemoteUrl);
             }
-            if (!Uri.IsWellFormedUriString(args.RemoteUrl, UriKind.Absolute))
+            if (!SkipUriValidation && !Uri.IsWellFormedUriString(args.RemoteUrl, UriKind.Absolute))
                 throw new ImageProcessingException("Invalid request! The specified Uri is invalid: " + args.RemoteUrl);
             return args;
         }
@@ -310,7 +324,7 @@ namespace ImageResizer.Plugins.RemoteReader {
             List<IIssue> issues = new List<IIssue>();
             string key = c.get("remoteReader.signingKey", String.Empty);
             if (string.IsNullOrEmpty(key))
-                issues.Add(new Issue("You are required to set a passphrase for securing remote URLs. Example: <resizer><remotereader signingKey=\"put a long and randam passphrase here\" /> </resizer>"));
+                issues.Add(new Issue("You are required to set a passphrase for securing remote URLs. Example: <resizer><remotereader signingKey=\"put a long and random passphrase here\" /> </resizer>"));
             return issues;
 
         }
@@ -325,35 +339,13 @@ namespace ImageResizer.Plugins.RemoteReader {
         /// <param name="maxRedirects"></param>
         /// <returns></returns>
         public Stream GetUriStream(Uri uri, int maxRedirects = -1) {
-            if (maxRedirects == -1) maxRedirects = AllowedRedirects;
-
             HttpWebResponse response = null;
             try {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
-                request.Timeout = 15000; //Default to 15 seconds. Browser timeout is usually 30.
-                
                 //This is IDisposable, but only disposes the stream we are returning. So we can't dispose it, and don't need to
-                response = request.GetResponse() as HttpWebResponse;
+                response = CreateWebRequest(uri, maxRedirects).GetResponse() as HttpWebResponse;
                 return response.GetResponseStream();
             } catch (WebException e) {
-                var resp = e.Response as HttpWebResponse;
-
-                if (e.Status == WebExceptionStatus.ProtocolError && resp != null) {
-                    if (resp.StatusCode == HttpStatusCode.NotFound) throw new FileNotFoundException("404 error: \"" + uri.ToString() + "\" not found.", e);
-
-                    if (resp.StatusCode == HttpStatusCode.Forbidden) throw new HttpException(403, "403 Not Authorized (from remote server) for : \"" + uri.ToString() + "\".", e);
-                    if (resp.StatusCode == HttpStatusCode.Moved ||
-                        resp.StatusCode == HttpStatusCode.Redirect) {
-                            if (maxRedirects < 1) throw new HttpException(500, "Too many redirects, stopped while looking for \"" + uri.ToString() + "\".");
-                            string loc = resp.GetResponseHeader("Location");
-                            if (!string.IsNullOrEmpty(loc) && Uri.IsWellFormedUriString(loc, UriKind.RelativeOrAbsolute)) {
-                                Uri newLoc = Uri.IsWellFormedUriString(loc, UriKind.Absolute) ? new Uri(loc) : new Uri(uri, new Uri(loc));
-                                response.Close(); response = null; 
-                                return GetUriStream(newLoc, maxRedirects - 1);
-                            }
-                    }
-                }
-                //if (resp != null)resp.Close();
+                HandleWebResponseException(e, uri);
                 if (response != null) response.Close();
                 throw e;
             } 
@@ -370,32 +362,34 @@ namespace ImageResizer.Plugins.RemoteReader {
         /// <returns></returns>
         public async Task<Stream> GetUriStreamAsync(Uri uri, int maxRedirects = -1)
         {
-            if (maxRedirects == -1) maxRedirects = AllowedRedirects;
-
             HttpWebResponse response = null;
-            try
-            {
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
-                request.Timeout = 15000; //Default to 15 seconds. Browser timeout is usually 30.
-                request.AllowAutoRedirect = maxRedirects != 0;
-                request.MaximumAutomaticRedirections = maxRedirects > 0 ? maxRedirects : 0;
+            try {
                 //This is IDisposable, but only disposes the stream we are returning. So we can't dispose it, and don't need to
-                response = await request.GetResponseAsync() as HttpWebResponse;
+                response = await CreateWebRequest(uri, maxRedirects).GetResponseAsync() as HttpWebResponse;
                 return response.GetResponseStream();
-            }
-            catch (WebException e)
-            {
-                var resp = e.Response as HttpWebResponse;
-
-                if (e.Status == WebExceptionStatus.ProtocolError && resp != null)
-                {
-                    if (resp.StatusCode == HttpStatusCode.NotFound) throw new FileNotFoundException("404 error: \"" + uri.ToString() + "\" not found.", e);
-
-                    if (resp.StatusCode == HttpStatusCode.Forbidden) throw new HttpException(403, "403 Not Authorized (from remote server) for : \"" + uri.ToString() + "\".", e);
-                }
-                //if (resp != null)resp.Close();
+            } catch (WebException e) {
+                HandleWebResponseException(e, uri);
                 if (response != null) response.Close();
                 throw e;
+            }
+        }
+
+        private HttpWebRequest CreateWebRequest(Uri uri, int maxRedirects = -1) {
+            if (maxRedirects == -1) maxRedirects = AllowedRedirects;
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
+            request.AutomaticDecompression = DecompressionMethods.Deflate | DecompressionMethods.GZip;
+            request.Timeout = 15000; //Default to 15 seconds. Browser timeout is usually 30.
+            request.AllowAutoRedirect = maxRedirects != 0;
+            request.MaximumAutomaticRedirections = maxRedirects > 0 ? maxRedirects : 0;
+            request.UserAgent = UserAgent;
+            return request;
+        }
+
+        private void HandleWebResponseException(WebException e, Uri uri) {
+            var resp = e.Response as HttpWebResponse;
+            if (e.Status == WebExceptionStatus.ProtocolError && resp != null) {
+                if (resp.StatusCode == HttpStatusCode.NotFound) throw new FileNotFoundException(String.Format("404 error: \"{0}\" not found.", uri), e);
+                if (resp.StatusCode == HttpStatusCode.Forbidden) throw new HttpException(403, String.Format("403 Not Authorized (from remote server) for : \"{0}\".", uri), e);
             }
         }
 

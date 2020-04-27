@@ -25,11 +25,13 @@ goto exit
   echo - Running Restore...
   nuget restore ..\AppVeyor.sln
 
-  echo - Fetching extra packaeges...
+  nuget restore ..\Plugins\FastScaling\ImageResizer.Plugins.FastScaling.sln
+
+  echo - Fetching extra packages...
   nuget restore FakeBuilder\packages.config
 
   echo - Fetching packages for build
-  ..\.paket\paket.bootstrapper.exe prerelease
+  ..\.paket\paket.bootstrapper.exe
   if errorlevel 1 (
     exit /b %errorlevel%
   )
@@ -51,7 +53,7 @@ goto exit
   echo builder ^<command^>
   echo builder ^<command^>;[command];[command];...
   echo.
-  echo A single fake call will be used for the multi-command intarface
+  echo A single fake call will be used for the multi-command interface
   echo Multi-command calls can't use help/prepare
   echo.
   echo Commands:

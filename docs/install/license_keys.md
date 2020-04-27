@@ -4,7 +4,7 @@
 
 License keys are only used for paid/AGPL plugins, such as those exclusive to Performance, Creative, or Elite editions.
 
-Publicly available binaries (such as those on nuget.org) require license keys. Confirmed AGPL compliant users, Elite and Support Contact customers can access binaries (via myget) that have no license key enforcment. 
+Publicly available binaries (such as those on nuget.org) require license keys. Confirmed AGPL compliant users, Elite and Support Contact customers can access binaries (via myget) that have no license key enforcement. 
 
 After adding your license key to web.config, visit the diagnostics page, /resizer.debug on your web app to ensure it has been accepted. License key validation is done offline using public-key cryptography; it does not use the network.
 
@@ -26,7 +26,7 @@ The diagnostics page should list the domain license you have installed - or, if 
 
 ### What about staging and development? 
 
-`<maphost from="" to="" />` allows you to tell ImageResizer to treat requests to a local hostname or IP addresse specified in `from` as if they were arriving with the HOST header specified in `to`. This lets you accurately verify licensing is working prior to deployment.
+`<maphost from="" to="" />` allows you to tell ImageResizer to treat requests to a local hostname or IP address specified in `from` as if they were arriving with the HOST header specified in `to`. This lets you accurately verify licensing is working prior to deployment.
 
 ### What if I use a license-enabled .dll without a license?
 
@@ -62,7 +62,7 @@ All functionality will continue to work, but newly generated images will have a 
       <license>
         domain.com(R4Performance includes R4Performance):RG9tYWluOiByZXNpemVyLmFwcGhiLmNvbQpPd25lcjogTmF0aGFuYWVsIEpvbmVzCklzc3VlZDogMjAxNS0wNS0wMVQxNTowNzo1NloKRmVhdHVyZXM6IFI0UGVyZm9ybWFuY2U=:oWv2YlAkzTEWcaJ6fPMEsweTNh9Bt5evhjWVNHuXtiRNl22sSS3OB/XE69NsSx8kEs1ExSwzvjwPx95paQyxGsTDigdh/UCkh7TCUyIECX7pI2JtA5f3KkFzfwmISIE8d14Kyf3ijO6s2HI1A1obbH5IucyaDJLQBCSrykxJK6JM4NOM82UbAUfwXRCnjWw2frwtBDp9rezJ46iQ80BXxTJ1LXlSqBry5z7bdSZtcP2k8L+Zp3t+9Blfl2k6z0um06kDa7RkPnmfwKCYTU+HbPQ2qDfGvcNaRC6XEa17ztTn52T6hErS7AJKIZ4OKxvw3olLmmVjEg+LiuKo7NVmmQ==
       </license>
-    </license>
+    </licenses>
   </resizer>
 
   <system.web>

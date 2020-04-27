@@ -5,17 +5,21 @@ Aliases: /plugins/faces
 
 # Faces plugin
 
+*PLEASE NOTE*
+* **This plugin is not forwards-compatible. Avoid these URL commands for maximum compatibility with Imageflow and future major ImageResizer releases.**
+* **Do not use with untrusted image data. This plugin relies on third-party C and C++ code which we have not audited (OpenCV).**
+* **While we provide a baseline version of OpenCV, we suggest that you check for the latest compatible release, at it may include security fixes.**
+
+
 You can find a sample project for this plugin in `\Samples\ImageStudio` within the full download 
 
 Human face detection plugin. Provides automatic face detection, as well as the CropAround plugin, which can even be combined in a single request (using &c.focus=faces) to provide face-focused/face-preserving cropping.
 
-OpenCV is required for face detection. Requires V3.2 or higher.
-
-A NuGet package for this plugin is not available, due to the vast number of dependencies. 
+OpenCV is required for face detection. 
+You **must** disable overlapped recycling on the application pool running this plugin. OpenCV cannot handle multiple instances per plugin.
 
 OpenCV does not support being used from multiple app domains. If you get a "Type Initializer Exception", restart the application pool and verify that it only contains 1 application, and that overlapped recycle is disabled.
 
-You **must** disable overlapped recycling on the application pool running this plugin. OpenCV cannot handle multiple instances per plugin.
 
 ## URL Usage
 
@@ -48,13 +52,13 @@ All tuning parameters are identical between the URL and Managed API.
 
 ## Tuning
 
-`f.minsize=0..100` (defaults to 3). The smallest face to detect, as a percentage of the image size.
+`f.minsize=0..100` (defaults to 4). The smallest face to detect, as a percentage of the image size.
 
-`f.faces=min-count,maxcount` Defaults to 1,8. The minimum and maximum number of faces to detect in the image. 
+`f.faces=min-count,maxcount` Defaults to 1,10. The minimum and maximum number of faces to detect in the image. 
 
 `f.expand=percent|xpercent,ypercent` Defaults to 0,0. The percent (0..100) to expand the face rectangles in each orientation. If ypercent is omitted, the value from xpercent will be used.
 
-`f.threshold=value|minvalue,value` The confidence threshold required to consider a face detected. Defaults to 1,2. 'minvalue' is used if we have not reached the quote specified in `f.faces`.
+`f.threshold=value|minvalue,value` The confidence threshold required to consider a face detected. Defaults to 3,5. 'minvalue' is used if we have not reached the quote specified in `f.faces`.
 
 
 ## Installation. 
@@ -63,7 +67,7 @@ All tuning parameters are identical between the URL and Managed API.
 2. Add `<add name="Faces" downloadNativeDependencies="true" />` inside `<resizer><plugins></plugins></resizer>` in Web.config.
 3. If you're not comfortable allowing the plugin to automatically download the correct bitness versions of the unmanaged dependencies, then set downloadNativeDependencies="false" and keep reading.
 3. Manually copy the required xml files to the /bin folder of your application (see *Feature classification files*)
-4. Manually copy all required dlls to the /bin folder of your application. (see *Using the 2.3.1 pre-compiled binaries*)
+4. Manually copy all required DLLs to the /bin folder of your application. (see *Using the 2.3.1 pre-compiled binaries*)
 
 
 
@@ -85,7 +89,7 @@ The JSON response contains image layout information so StudioJS or ImageResizer.
 
 * ow/oh - original image width/height
 * cropx/cropy/cropw/croph - Source rectangle on original image that has been cropped/copied to the result image
-* dx/dy/dw/dh - Destination rectangle on result image that contains the imagery from cropx/cropy/cropw/cropg. If rotation is used, this will be the bounding box.
+* dx/dy/dw/dh - Destination rectangle on result image that contains the imagery from cropx/cropy/cropw/croph. If rotation is used, this will be the bounding box.
 * message - String containing error message() if any
 * features - array of rects describing features. Rect = {X,Y,X2,Y2,Accuracy, (Feature)} 
 
@@ -100,47 +104,27 @@ Each item in the 'features' array contains the following members
 * Accuracy
 * Feature (only for RedEye)
 
-For RedEye results, only rectanges where Feature=0 are eyes. Feature=1 means Eye Pair, Feature = 2 means face.
-
-
-
-
-## Managed Dependencies
-
-* ImageResizer.dll
-* AForge.dll
-* AForge.Math.dll
-* AForge.Imaging.dll
-* AForge.Imaging.Formats.dll 
-* OpenCvSharp.dll
-* OpenCvSharp.dll.config
-* Newtonsoft.Json.dll
-
+For RedEye results, only rectangles where Feature=0 are eyes. Feature=1 means Eye Pair, Feature = 2 means face.
 
 ## Feature classification files
 
-[You can download all the XML files](http://downloads.imageresizing.net/OpenCV-2.3.1-all-cascades.zip) in a single .ZIP file. You only need to copy the following into the /bin folder.
+https://d3ndcb4i803ljg.cloudfront.net/opencv/2.4.10/cascades/haarcascade_frontalface_alt.xml
+https://d3ndcb4i803ljg.cloudfront.net/opencv/2.4.10/cascades/haarcascade_eye.xml
 
-* haarcascade\_frontalface\_default.xml
-
-## Using the 2.3.1 pre-compiled binaries
-
-All dlls must match in bitness. All dlls are bitness specific. You can't run OpenCV x86 on an x64 app pool or vice versa. 
-
-* [Download 32-bit DLLs](http://downloads.imageresizing.net/OpenCv-min-2.3.1-x86.zip).
-* [Download 64-bit DLLs](http://downloads.imageresizing.net/OpenCv-min-2.3.1-x64.zip).
 
 ## Manually getting the binaries
 
-The provided binaries are for OpenCV 2.3.1. If a newer version is released, you can get it yourself. 
+The provided binaries are for OpenCV 2.4.10 If a newer version is released, you can get it yourself. 
 
-1. Download either the [x86](http://code.google.com/p/opencvsharp/downloads/detail?name=OpenCvSharp-2.3.1-x86-20120218.zip&can=2&q=) or [x64](http://code.google.com/p/opencvsharp/downloads/detail?name=OpenCvSharp-2.3.1-x64-20120218.zip&can=2&q=) build of OpenCvSharp.
+1. Download either [OpenCvSharp](https://github.com/shimat/opencvsharp/releases/tag/2.4.10.20170126).
 2. Extract to a folder, and copy OpenCvSharp.dll and OpenCvSharp.dll.config. The x86 and x64 builds are actually identical. 
 3. Go to SourceForge, the opencvlibrary project, the Files section, the opencv-win folder \[[Link](http://sourceforge.net/projects/opencvlibrary/files/opencv-win/)\].
 4. Select the latest version and download the OpenCV-[Version]-win-superpack.exe file. 
 5. Extract it somewhere (you'll want to delete it later, it's over 1GB uncompressed)
 
-### Files to copy from extracted OpenCV-2.3.1-win-superpack package
+### Files to copy from extracted package
+
+(version numbers may differ - 231 or 2410, and vc9 or vc12, etc)
 
 * tbb.dll (From opencv\build\common\tbb\ia32\vc9 or opencv\build\common\tbb\intel64\vc9
 * opencv\_calib3d231.dll (From opencv\build\x64\vc9\bin or opencv\build\x86\vc9\bin)
